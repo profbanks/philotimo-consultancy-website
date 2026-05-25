@@ -1046,6 +1046,11 @@ img {
     linear-gradient(180deg, #eef6f4 0%, #f8faf6 46%, #ffffff 100%);
 }
 
+.career-portal {
+  background:
+    linear-gradient(180deg, #fffaf0 0%, #f8faf6 44%, #eef6f4 100%);
+}
+
 .teacher-portal > .section-heading {
   max-width: 980px;
   margin: 0 auto 34px;
@@ -1186,6 +1191,26 @@ img {
   width: 16px;
   min-height: 16px;
   padding: 0;
+}
+
+.portal-form .consent-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid rgba(15, 107, 86, 0.16);
+  border-radius: 8px;
+  background: #f7fbf8;
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
+.portal-form .consent-line input {
+  width: 18px;
+  min-height: 18px;
+  margin-top: 2px;
+  padding: 0;
+  flex: 0 0 18px;
 }
 
 .admin-portal {
