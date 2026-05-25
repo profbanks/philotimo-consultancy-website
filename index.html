@@ -31,6 +31,7 @@
 
       <nav class="site-nav" id="site-nav" aria-label="Primary navigation">
         <a href="#services">Services</a>
+        <a href="#teacher-portal">Teacher Portal</a>
         <a href="#clients">Clients</a>
         <a href="#commitments">Commitments</a>
         <a href="#leadership">President</a>
@@ -55,7 +56,7 @@
           </p>
           <div class="hero-actions">
             <a class="button primary" href="#contact">Book a consultation</a>
-            <a class="button secondary" href="#services">Explore services</a>
+            <a class="button secondary" href="#teacher-portal">Open teacher portal</a>
           </div>
         </div>
       </section>
@@ -84,6 +85,243 @@
           Philotimo provides private lessons, home lessons, examination preparation, and focused subject coaching for learners who
           need extra academic support, stronger confidence, or a more personal learning pace.
         </p>
+      </section>
+
+      <section class="teacher-portal" id="teacher-portal" aria-labelledby="teacher-portal-title">
+        <div class="section-heading">
+          <p class="eyebrow">Subject teachers portal</p>
+          <h2 id="teacher-portal-title">Register subject experts, approve applications, and allocate learners to the right teacher.</h2>
+        </div>
+
+        <div class="portal-shell">
+          <form class="portal-form" id="teacher-application-form">
+            <div class="portal-form-head">
+              <span>Teacher Application</span>
+              <strong>Pending admin approval</strong>
+            </div>
+            <div class="form-grid two">
+              <label>
+                Full name
+                <input name="teacherName" type="text" autocomplete="name" required />
+              </label>
+              <label>
+                Phone number
+                <input name="teacherPhone" type="tel" autocomplete="tel" required />
+              </label>
+              <label>
+                Email address
+                <input name="teacherEmail" type="email" autocomplete="email" required />
+              </label>
+              <label>
+                Current workplace
+                <input name="workplace" type="text" required />
+              </label>
+              <label>
+                Highest qualification
+                <input name="qualification" type="text" required />
+              </label>
+              <label>
+                Years of teaching experience
+                <input name="experienceYears" type="number" min="0" max="50" required />
+              </label>
+              <label>
+                Main subject
+                <select name="primarySubject" required>
+                  <option value="">Choose a subject</option>
+                  <option>Mathematics</option>
+                  <option>English Language</option>
+                  <option>Physics</option>
+                  <option>Chemistry</option>
+                  <option>Biology</option>
+                  <option>Further Mathematics</option>
+                  <option>Economics</option>
+                  <option>Government</option>
+                  <option>Literature in English</option>
+                  <option>Civic Education</option>
+                  <option>Geography</option>
+                  <option>Agricultural Science</option>
+                  <option>Computer Studies</option>
+                  <option>Basic Technology</option>
+                  <option>Business Studies</option>
+                  <option>Financial Accounting</option>
+                  <option>Commerce</option>
+                </select>
+              </label>
+              <label>
+                Other subject strengths
+                <input name="otherSubjects" type="text" placeholder="e.g. Chemistry, Basic Science" />
+              </label>
+              <label>
+                Preferred teaching mode
+                <select name="teachingMode" required>
+                  <option value="">Choose mode</option>
+                  <option>Home lesson</option>
+                  <option>Private centre lesson</option>
+                  <option>Online lesson</option>
+                  <option>Hybrid lesson</option>
+                </select>
+              </label>
+              <label>
+                Location coverage
+                <input name="coverage" type="text" placeholder="e.g. Abeokuta, Obada-Oko, Aro" required />
+              </label>
+            </div>
+
+            <fieldset class="check-group">
+              <legend>Classes handled</legend>
+              <label><input type="checkbox" name="classLevels" value="JSS 1" /> JSS 1</label>
+              <label><input type="checkbox" name="classLevels" value="JSS 2" /> JSS 2</label>
+              <label><input type="checkbox" name="classLevels" value="JSS 3" /> JSS 3</label>
+              <label><input type="checkbox" name="classLevels" value="SSS 1" /> SSS 1</label>
+              <label><input type="checkbox" name="classLevels" value="SSS 2" /> SSS 2</label>
+              <label><input type="checkbox" name="classLevels" value="SSS 3" /> SSS 3</label>
+              <label><input type="checkbox" name="classLevels" value="WAEC/NECO" /> WAEC/NECO</label>
+              <label><input type="checkbox" name="classLevels" value="JAMB" /> JAMB</label>
+            </fieldset>
+
+            <label>
+              Teaching experience and achievements
+              <textarea name="experienceSummary" rows="4" required></textarea>
+            </label>
+            <label>
+              Referee or professional profile link
+              <input name="profileLink" type="text" placeholder="LinkedIn, school profile, referee contact, or portfolio" />
+            </label>
+            <button class="button primary" type="submit">Submit teacher application</button>
+            <p class="form-status" id="teacher-application-status" role="status" aria-live="polite"></p>
+          </form>
+
+          <form class="portal-form accent" id="student-request-form">
+            <div class="portal-form-head">
+              <span>Student Request</span>
+              <strong>Teacher matching</strong>
+            </div>
+            <div class="form-grid two">
+              <label>
+                Student name
+                <input name="studentName" type="text" required />
+              </label>
+              <label>
+                Parent or guardian phone
+                <input name="guardianPhone" type="tel" required />
+              </label>
+              <label>
+                Class level
+                <select name="studentClass" required>
+                  <option value="">Choose class</option>
+                  <option>JSS 1</option>
+                  <option>JSS 2</option>
+                  <option>JSS 3</option>
+                  <option>SSS 1</option>
+                  <option>SSS 2</option>
+                  <option>SSS 3</option>
+                  <option>WAEC/NECO</option>
+                  <option>JAMB</option>
+                </select>
+              </label>
+              <label>
+                Requested subject
+                <select name="requestedSubject" required>
+                  <option value="">Choose subject</option>
+                  <option>Mathematics</option>
+                  <option>English Language</option>
+                  <option>Physics</option>
+                  <option>Chemistry</option>
+                  <option>Biology</option>
+                  <option>Further Mathematics</option>
+                  <option>Economics</option>
+                  <option>Government</option>
+                  <option>Literature in English</option>
+                  <option>Civic Education</option>
+                  <option>Geography</option>
+                  <option>Agricultural Science</option>
+                  <option>Computer Studies</option>
+                  <option>Basic Technology</option>
+                  <option>Business Studies</option>
+                  <option>Financial Accounting</option>
+                  <option>Commerce</option>
+                </select>
+              </label>
+              <label>
+                Preferred mode
+                <select name="preferredMode" required>
+                  <option value="">Choose mode</option>
+                  <option>Home lesson</option>
+                  <option>Private centre lesson</option>
+                  <option>Online lesson</option>
+                  <option>Hybrid lesson</option>
+                </select>
+              </label>
+              <label>
+                Lesson location
+                <input name="lessonLocation" type="text" required />
+              </label>
+            </div>
+            <label>
+              Learning need
+              <textarea name="learningNeed" rows="4" required></textarea>
+            </label>
+            <button class="button primary" type="submit">Submit student request</button>
+            <p class="form-status" id="student-request-status" role="status" aria-live="polite"></p>
+          </form>
+        </div>
+
+        <div class="admin-portal" aria-labelledby="admin-portal-title">
+          <div class="admin-access">
+            <div>
+              <p class="eyebrow">Admin desk</p>
+              <h3 id="admin-portal-title">Teacher approval and student allocation</h3>
+            </div>
+            <form id="admin-access-form" class="admin-access-form">
+              <label>
+                Admin code
+                <input name="adminCode" type="password" autocomplete="current-password" required />
+              </label>
+              <button class="button secondary" type="submit">Unlock admin</button>
+            </form>
+          </div>
+          <p class="form-status" id="admin-status" role="status" aria-live="polite"></p>
+
+          <div class="admin-workspace" id="admin-workspace" hidden>
+            <div class="portal-summary" aria-label="Portal summary">
+              <div>
+                <span id="pending-count">0</span>
+                <strong>Pending teachers</strong>
+              </div>
+              <div>
+                <span id="approved-count">0</span>
+                <strong>Approved teachers</strong>
+              </div>
+              <div>
+                <span id="student-count">0</span>
+                <strong>Student requests</strong>
+              </div>
+              <div>
+                <span id="allocation-count">0</span>
+                <strong>Allocations</strong>
+              </div>
+            </div>
+
+            <div class="admin-grid">
+              <section class="admin-panel" aria-labelledby="pending-teachers-title">
+                <h4 id="pending-teachers-title">Applications awaiting approval</h4>
+                <div class="portal-list" id="pending-teachers"></div>
+              </section>
+              <section class="admin-panel" aria-labelledby="approved-teachers-title">
+                <h4 id="approved-teachers-title">Approved subject teachers</h4>
+                <div class="portal-list" id="approved-teachers"></div>
+              </section>
+              <section class="admin-panel wide" aria-labelledby="student-requests-title">
+                <h4 id="student-requests-title">Student requests and allocation</h4>
+                <div class="portal-list" id="student-requests"></div>
+              </section>
+              <section class="admin-panel wide" aria-labelledby="allocations-title">
+                <h4 id="allocations-title">Confirmed allocations</h4>
+                <div class="portal-list" id="allocation-board"></div>
+              </section>
+            </div>
+          </div>
+        </div>
       </section>
 
       <section class="section intro" aria-labelledby="intro-title">
@@ -566,4 +804,6 @@
     <script src="script.js"></script>
   </body>
 </html>
+
+
 
