@@ -25,6 +25,7 @@ const pendingJobseekersList = document.querySelector("#pending-jobseekers");
 const approvedJobseekersList = document.querySelector("#approved-jobseekers");
 const employerRequestsList = document.querySelector("#employer-requests");
 const jobPlacementBoard = document.querySelector("#job-placement-board");
+const contactEnquiriesList = document.querySelector("#contact-enquiries");
 const pendingCount = document.querySelector("#pending-count");
 const approvedCount = document.querySelector("#approved-count");
 const studentCount = document.querySelector("#student-count");
@@ -33,36 +34,83 @@ const pendingJobseekerCount = document.querySelector("#pending-jobseeker-count")
 const approvedJobseekerCount = document.querySelector("#approved-jobseeker-count");
 const employerRequestCount = document.querySelector("#employer-request-count");
 const jobPlacementCount = document.querySelector("#job-placement-count");
+const contactCount = document.querySelector("#contact-count");
 
-const PORTAL_STORAGE_KEY = "philotimo-consultancy-portal";
-const ADMIN_CODE = "PHILOTIMO-ADMIN";
+const API_BASE = "/api";
+const ADMIN_TOKEN_KEY = "philotimo-admin-token";
+const EMPTY_PORTAL_DATA = {
+  teachers: [],
+  students: [],
+  allocations: [],
+  jobseekers: [],
+  employerRequests: [],
+  jobPlacements: [],
+  contacts: [],
+};
 
 const createId = () => {
   if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 };
 
-const loadPortalData = () => {
-  try {
-    const saved = JSON.parse(localStorage.getItem(PORTAL_STORAGE_KEY));
-    return {
-      teachers: Array.isArray(saved?.teachers) ? saved.teachers : [],
-      students: Array.isArray(saved?.students) ? saved.students : [],
-      allocations: Array.isArray(saved?.allocations) ? saved.allocations : [],
-      jobseekers: Array.isArray(saved?.jobseekers) ? saved.jobseekers : [],
-      employerRequests: Array.isArray(saved?.employerRequests) ? saved.employerRequests : [],
-      jobPlacements: Array.isArray(saved?.jobPlacements) ? saved.jobPlacements : [],
-    };
-  } catch {
-    return { teachers: [], students: [], allocations: [], jobseekers: [], employerRequests: [], jobPlacements: [] };
-  }
+let portalData = { ...EMPTY_PORTAL_DATA };
+let adminUnlocked = Boolean(sessionStorage.getItem(ADMIN_TOKEN_KEY));
+
+const getAdminToken = () => sessionStorage.getItem(ADMIN_TOKEN_KEY) || "";
+
+const setAdminToken = (token) => {
+  if (token) sessionStorage.setItem(ADMIN_TOKEN_KEY, token);
+  else sessionStorage.removeItem(ADMIN_TOKEN_KEY);
 };
 
-let portalData = loadPortalData();
-let adminUnlocked = false;
+const hydratePortalData = (data = {}) => {
+  portalData = Object.fromEntries(
+    Object.keys(EMPTY_PORTAL_DATA).map((key) => [key, Array.isArray(data[key]) ? data[key] : []]),
+  );
+};
 
-const savePortalData = () => {
-  localStorage.setItem(PORTAL_STORAGE_KEY, JSON.stringify(portalData));
+const apiRequest = async (path, options = {}) => {
+  const headers = {
+    "Content-Type": "application/json",
+    ...(options.headers || {}),
+  };
+  const token = getAdminToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const response = await fetch(`${API_BASE}${path}`, {
+    ...options,
+    headers,
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.message || "The backend could not process this request.");
+  return payload;
+};
+
+const setBusy = (form, busy) => {
+  form?.querySelectorAll("button, input, select, textarea").forEach((control) => {
+    control.disabled = busy;
+  });
+};
+
+const refreshAdminState = async (message = "") => {
+  if (!adminUnlocked) {
+    renderPortal();
+    return;
+  }
+
+  try {
+    const state = await apiRequest("/admin/state");
+    hydratePortalData(state);
+    if (adminWorkspace) adminWorkspace.hidden = false;
+    renderPortal();
+    if (message && adminStatus) adminStatus.textContent = message;
+  } catch (error) {
+    adminUnlocked = false;
+    setAdminToken("");
+    if (adminWorkspace) adminWorkspace.hidden = true;
+    if (adminStatus) adminStatus.textContent = error.message;
+    renderPortal();
+  }
 };
 
 const escapeHtml = (value = "") =>
@@ -334,6 +382,22 @@ const renderJobPlacementCard = (placement) => `
     </div>
   </article>`;
 
+const renderContactCard = (contact) => `
+  <article class="portal-record">
+    <header>
+      <div>
+        <h5>${escapeHtml(contact.name)}</h5>
+        <p>${escapeHtml(contact.service)}</p>
+      </div>
+      <span class="status-pill pending">${escapeHtml(contact.status || "new")}</span>
+    </header>
+    <div class="portal-meta">
+      <span>${escapeHtml(contact.email)}</span>
+      <span>${formatDate(contact.createdAt)}</span>
+    </div>
+    <p>${escapeHtml(contact.message)}</p>
+  </article>`;
+
 const emptyState = (message) => `<p class="empty-state">${message}</p>`;
 
 const renderPortal = () => {
@@ -350,6 +414,7 @@ const renderPortal = () => {
   if (approvedJobseekerCount) approvedJobseekerCount.textContent = String(approvedJobseekers.length);
   if (employerRequestCount) employerRequestCount.textContent = String(portalData.employerRequests.length);
   if (jobPlacementCount) jobPlacementCount.textContent = String(portalData.jobPlacements.length);
+  if (contactCount) contactCount.textContent = String(portalData.contacts.length);
 
   if (!adminUnlocked) return;
 
@@ -384,6 +449,10 @@ const renderPortal = () => {
   jobPlacementBoard.innerHTML = portalData.jobPlacements.length
     ? portalData.jobPlacements.map(renderJobPlacementCard).join("")
     : emptyState("No confirmed jobseeker match yet.");
+
+  contactEnquiriesList.innerHTML = portalData.contacts.length
+    ? portalData.contacts.map(renderContactCard).join("")
+    : emptyState("No contact enquiry has been submitted yet.");
 };
 
 navToggle?.addEventListener("click", () => {
@@ -398,15 +467,33 @@ siteNav?.addEventListener("click", (event) => {
   }
 });
 
-contactForm?.addEventListener("submit", (event) => {
+contactForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
   const data = new FormData(contactForm);
-  const name = data.get("name")?.toString().trim() || "there";
-  formStatus.textContent = `Thank you, ${name}. Your enquiry is ready to send.`;
-  contactForm.reset();
+  const enquiry = {
+    name: data.get("name")?.toString().trim(),
+    email: data.get("email")?.toString().trim(),
+    service: data.get("service")?.toString(),
+    message: data.get("message")?.toString().trim(),
+  };
+
+  try {
+    setBusy(contactForm, true);
+    const response = await apiRequest("/contacts", {
+      method: "POST",
+      body: JSON.stringify(enquiry),
+    });
+    formStatus.textContent = response.message;
+    contactForm.reset();
+    if (adminUnlocked) await refreshAdminState();
+  } catch (error) {
+    formStatus.textContent = error.message;
+  } finally {
+    setBusy(contactForm, false);
+  }
 });
 
-teacherApplicationForm?.addEventListener("submit", (event) => {
+teacherApplicationForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
   const data = new FormData(teacherApplicationForm);
   const classLevels = data.getAll("classLevels").map((value) => value.toString());
@@ -417,7 +504,6 @@ teacherApplicationForm?.addEventListener("submit", (event) => {
   }
 
   const teacher = {
-    id: createId(),
     teacherName: data.get("teacherName").toString().trim(),
     teacherPhone: data.get("teacherPhone").toString().trim(),
     teacherEmail: data.get("teacherEmail").toString().trim(),
@@ -431,22 +517,28 @@ teacherApplicationForm?.addEventListener("submit", (event) => {
     classLevels,
     experienceSummary: data.get("experienceSummary").toString().trim(),
     profileLink: data.get("profileLink").toString().trim(),
-    status: "pending",
-    createdAt: new Date().toISOString(),
   };
 
-  portalData.teachers.unshift(teacher);
-  savePortalData();
-  teacherApplicationForm.reset();
-  teacherApplicationStatus.textContent = `${teacher.teacherName}'s application has been submitted for admin approval.`;
-  renderPortal();
+  try {
+    setBusy(teacherApplicationForm, true);
+    const response = await apiRequest("/teachers", {
+      method: "POST",
+      body: JSON.stringify(teacher),
+    });
+    teacherApplicationForm.reset();
+    teacherApplicationStatus.textContent = response.message;
+    if (adminUnlocked) await refreshAdminState();
+  } catch (error) {
+    teacherApplicationStatus.textContent = error.message;
+  } finally {
+    setBusy(teacherApplicationForm, false);
+  }
 });
 
-studentRequestForm?.addEventListener("submit", (event) => {
+studentRequestForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
   const data = new FormData(studentRequestForm);
   const student = {
-    id: createId(),
     guardianName: data.get("guardianName").toString().trim(),
     studentName: data.get("studentName").toString().trim(),
     guardianPhone: data.get("guardianPhone").toString().trim(),
@@ -460,25 +552,30 @@ studentRequestForm?.addEventListener("submit", (event) => {
     lessonLocation: data.get("lessonLocation").toString().trim(),
     preferredSchedule: data.get("preferredSchedule").toString().trim(),
     learningNeed: data.get("learningNeed").toString().trim(),
-    status: "open",
-    createdAt: new Date().toISOString(),
   };
 
-  portalData.students.unshift(student);
-  savePortalData();
-  studentRequestForm.reset();
-  const matches = getTeacherMatches(student);
-  studentRequestStatus.textContent = matches.length
-    ? `${student.studentName}'s request has been saved with ${matches.length} teacher match${matches.length === 1 ? "" : "es"}.`
-    : `${student.studentName}'s request has been saved. Admin can allocate once a matching teacher is approved.`;
-  renderPortal();
+  try {
+    setBusy(studentRequestForm, true);
+    const response = await apiRequest("/students", {
+      method: "POST",
+      body: JSON.stringify(student),
+    });
+    studentRequestForm.reset();
+    studentRequestStatus.textContent = response.matchCount
+      ? `${student.studentName}'s request has been saved with ${response.matchCount} teacher match${response.matchCount === 1 ? "" : "es"}.`
+      : `${student.studentName}'s request has been saved. Admin can allocate once a matching teacher is approved.`;
+    if (adminUnlocked) await refreshAdminState();
+  } catch (error) {
+    studentRequestStatus.textContent = error.message;
+  } finally {
+    setBusy(studentRequestForm, false);
+  }
 });
 
-jobseekerRegistrationForm?.addEventListener("submit", (event) => {
+jobseekerRegistrationForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
   const data = new FormData(jobseekerRegistrationForm);
   const jobseeker = {
-    id: createId(),
     jobName: data.get("jobName").toString().trim(),
     jobPhone: data.get("jobPhone").toString().trim(),
     jobEmail: data.get("jobEmail").toString().trim(),
@@ -493,22 +590,28 @@ jobseekerRegistrationForm?.addEventListener("submit", (event) => {
     cvLink: data.get("cvLink").toString().trim(),
     coreSkills: data.get("coreSkills").toString().trim(),
     workSummary: data.get("workSummary").toString().trim(),
-    status: "pending",
-    createdAt: new Date().toISOString(),
   };
 
-  portalData.jobseekers.unshift(jobseeker);
-  savePortalData();
-  jobseekerRegistrationForm.reset();
-  jobseekerStatus.textContent = `${jobseeker.jobName}'s profile has been submitted for admin vetting.`;
-  renderPortal();
+  try {
+    setBusy(jobseekerRegistrationForm, true);
+    const response = await apiRequest("/jobseekers", {
+      method: "POST",
+      body: JSON.stringify(jobseeker),
+    });
+    jobseekerRegistrationForm.reset();
+    jobseekerStatus.textContent = response.message;
+    if (adminUnlocked) await refreshAdminState();
+  } catch (error) {
+    jobseekerStatus.textContent = error.message;
+  } finally {
+    setBusy(jobseekerRegistrationForm, false);
+  }
 });
 
-employerRequestForm?.addEventListener("submit", (event) => {
+employerRequestForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
   const data = new FormData(employerRequestForm);
   const request = {
-    id: createId(),
     institutionName: data.get("institutionName").toString().trim(),
     contactPerson: data.get("contactPerson").toString().trim(),
     employerPhone: data.get("employerPhone").toString().trim(),
@@ -522,38 +625,70 @@ employerRequestForm?.addEventListener("submit", (event) => {
     requestEmploymentType: data.get("requestEmploymentType").toString(),
     startDate: data.get("startDate").toString().trim(),
     requestNotes: data.get("requestNotes").toString().trim(),
-    status: "open",
-    createdAt: new Date().toISOString(),
   };
 
-  portalData.employerRequests.unshift(request);
-  savePortalData();
-  employerRequestForm.reset();
-  const matches = getJobseekerMatches(request);
-  employerRequestStatus.textContent = matches.length
-    ? `${request.institutionName}'s request has been saved with ${matches.length} candidate match${matches.length === 1 ? "" : "es"}.`
-    : `${request.institutionName}'s request has been saved. Admin can match once a suitable jobseeker is approved.`;
-  renderPortal();
+  try {
+    setBusy(employerRequestForm, true);
+    const response = await apiRequest("/employer-requests", {
+      method: "POST",
+      body: JSON.stringify(request),
+    });
+    employerRequestForm.reset();
+    employerRequestStatus.textContent = response.matchCount
+      ? `${request.institutionName}'s request has been saved with ${response.matchCount} candidate match${response.matchCount === 1 ? "" : "es"}.`
+      : `${request.institutionName}'s request has been saved. Admin can match once a suitable jobseeker is approved.`;
+    if (adminUnlocked) await refreshAdminState();
+  } catch (error) {
+    employerRequestStatus.textContent = error.message;
+  } finally {
+    setBusy(employerRequestForm, false);
+  }
 });
 
-adminAccessForm?.addEventListener("submit", (event) => {
+adminAccessForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
   const data = new FormData(adminAccessForm);
   const code = data.get("adminCode")?.toString().trim();
 
-  if (code !== ADMIN_CODE) {
-    adminStatus.textContent = "Admin code not recognised.";
+  try {
+    setBusy(adminAccessForm, true);
+    const response = await apiRequest("/admin/login", {
+      method: "POST",
+      body: JSON.stringify({ adminCode: code }),
+    });
+    setAdminToken(response.token);
+    adminUnlocked = true;
+    adminAccessForm.reset();
+    await refreshAdminState("Admin desk unlocked. Backend records are now connected.");
+  } catch (error) {
+    adminUnlocked = false;
+    setAdminToken("");
+    adminStatus.textContent = error.message;
+  } finally {
+    setBusy(adminAccessForm, false);
+  }
+});
+
+const runAdminAction = async (action, id, selectedId = "") => {
+  if (!adminUnlocked) {
+    adminStatus.textContent = "Please unlock the admin desk first.";
     return;
   }
 
-  adminUnlocked = true;
-  adminWorkspace.hidden = false;
-  adminStatus.textContent = "Admin desk unlocked.";
-  adminAccessForm.reset();
-  renderPortal();
-});
+  try {
+    const response = await apiRequest("/admin/action", {
+      method: "POST",
+      body: JSON.stringify({ action, id, selectedId }),
+    });
+    hydratePortalData(response.state);
+    renderPortal();
+    adminStatus.textContent = response.message || "Admin action completed.";
+  } catch (error) {
+    adminStatus.textContent = error.message;
+  }
+};
 
-document.addEventListener("click", (event) => {
+document.addEventListener("click", async (event) => {
   if (!(event.target instanceof Element)) return;
   const button = event.target.closest("[data-portal-action]");
   if (!(button instanceof HTMLButtonElement)) return;
@@ -563,90 +698,37 @@ document.addEventListener("click", (event) => {
   if (!action || !id) return;
 
   if (action === "approve-teacher" || action === "reject-teacher" || action === "reopen-teacher") {
-    const teacher = portalData.teachers.find((item) => item.id === id);
-    if (!teacher) return;
-    teacher.status = action === "approve-teacher" ? "approved" : action === "reject-teacher" ? "rejected" : "pending";
-    adminStatus.textContent = `${teacher.teacherName} is now ${teacher.status}.`;
-    savePortalData();
-    renderPortal();
+    await runAdminAction(action, id);
   }
 
   if (action === "approve-jobseeker" || action === "reject-jobseeker" || action === "reopen-jobseeker") {
-    const jobseeker = portalData.jobseekers.find((item) => item.id === id);
-    if (!jobseeker) return;
-    jobseeker.status =
-      action === "approve-jobseeker" ? "approved" : action === "reject-jobseeker" ? "rejected" : "pending";
-    adminStatus.textContent = `${jobseeker.jobName} is now ${jobseeker.status}.`;
-    savePortalData();
-    renderPortal();
+    await runAdminAction(action, id);
   }
 
   if (action === "allocate-student") {
-    const student = portalData.students.find((item) => item.id === id);
     const select = document.querySelector(`[data-allocation-select="${id}"]`);
-    const teacher = portalData.teachers.find((item) => item.id === select?.value);
-    if (!student || !teacher) return;
-
-    portalData.allocations = portalData.allocations.filter((allocation) => allocation.studentId !== student.id);
-    portalData.allocations.unshift({
-      id: createId(),
-      studentId: student.id,
-      teacherId: teacher.id,
-      studentName: student.studentName,
-      teacherName: teacher.teacherName,
-      subject: student.requestedSubject,
-      studentClass: student.studentClass,
-      mode: student.preferredMode,
-      location: student.lessonLocation,
-      createdAt: new Date().toISOString(),
-    });
-    student.status = "allocated";
-    adminStatus.textContent = `${student.studentName} has been allocated to ${teacher.teacherName}.`;
-    savePortalData();
-    renderPortal();
+    if (!select?.value) {
+      adminStatus.textContent = "Please choose an approved teacher before allocating.";
+      return;
+    }
+    await runAdminAction(action, id, select.value);
   }
 
   if (action === "place-jobseeker") {
-    const request = portalData.employerRequests.find((item) => item.id === id);
     const select = document.querySelector(`[data-job-placement-select="${id}"]`);
-    const jobseeker = portalData.jobseekers.find((item) => item.id === select?.value);
-    if (!request || !jobseeker) return;
-
-    portalData.jobPlacements = portalData.jobPlacements.filter((placement) => placement.requestId !== request.id);
-    portalData.jobPlacements.unshift({
-      id: createId(),
-      requestId: request.id,
-      jobseekerId: jobseeker.id,
-      institutionName: request.institutionName,
-      jobName: jobseeker.jobName,
-      roleNeeded: request.roleNeeded,
-      categoryNeeded: request.categoryNeeded,
-      employmentType: request.requestEmploymentType,
-      location: request.employerLocation,
-      createdAt: new Date().toISOString(),
-    });
-    request.status = "matched";
-    adminStatus.textContent = `${jobseeker.jobName} has been matched to ${request.institutionName}.`;
-    savePortalData();
-    renderPortal();
+    if (!select?.value) {
+      adminStatus.textContent = "Please choose an approved jobseeker before matching.";
+      return;
+    }
+    await runAdminAction(action, id, select.value);
   }
 
   if (action === "clear-allocation") {
-    const student = portalData.students.find((item) => item.id === id);
-    portalData.allocations = portalData.allocations.filter((allocation) => allocation.studentId !== id);
-    if (student) student.status = "open";
-    adminStatus.textContent = "Allocation has been reopened.";
-    savePortalData();
-    renderPortal();
+    await runAdminAction(action, id);
   }
 
   if (action === "clear-job-placement") {
-    const request = portalData.employerRequests.find((item) => item.id === id);
-    portalData.jobPlacements = portalData.jobPlacements.filter((placement) => placement.requestId !== id);
-    if (request) request.status = "open";
-    adminStatus.textContent = "Jobseeker match has been reopened.";
-    savePortalData();
-    renderPortal();
+    await runAdminAction(action, id);
   }
 });
 
@@ -712,5 +794,8 @@ if ("IntersectionObserver" in window && metricValues.length) {
   animateMetrics();
 }
 
-renderPortal();
-
+if (adminUnlocked) {
+  refreshAdminState("Admin session restored.");
+} else {
+  renderPortal();
+}
