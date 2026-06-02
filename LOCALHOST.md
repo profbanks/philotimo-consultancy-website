@@ -47,6 +47,24 @@ data/local-portal-state.json
 
 This local JSON backend is separate from Netlify. The Netlify deployment can remain online, but localhost does not depend on Netlify.
 
+## Local Email Notifications
+
+When an administrator approves a teacher, allocates a student, vets a jobseeker, or matches a candidate to an employer request, the backend creates corresponding email notices immediately.
+
+To send real emails from localhost, set SMTP details before starting the server:
+
+```powershell
+$env:SMTP_HOST = "smtp.example.com"
+$env:SMTP_PORT = "587"
+$env:SMTP_USERNAME = "your-smtp-username"
+$env:SMTP_PASSWORD = "your-smtp-password"
+$env:SMTP_FROM = "info@yourdomain.com"
+$env:SMTP_FROM_NAME = "Philotimo Educational Consultancy Services"
+powershell.exe -ExecutionPolicy Bypass -File .\local-server.ps1
+```
+
+If SMTP is not configured, each notice is saved in the local JSON file and the admin dashboard reports that email delivery is not configured yet.
+
 ## GitHub
 
 The consultancy website repository is:
