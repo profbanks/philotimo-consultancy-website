@@ -11,6 +11,7 @@ const studentRequestForm = document.querySelector("#student-request-form");
 const jobseekerRegistrationForm = document.querySelector("#jobseeker-registration-form");
 const employerRequestForm = document.querySelector("#employer-request-form");
 const adminAccessForm = document.querySelector("#admin-access-form");
+const adminPortal = document.querySelector("[data-admin-portal]");
 const teacherApplicationStatus = document.querySelector("#teacher-application-status");
 const studentRequestStatus = document.querySelector("#student-request-status");
 const jobseekerStatus = document.querySelector("#jobseeker-status");
@@ -38,6 +39,7 @@ const contactCount = document.querySelector("#contact-count");
 
 const API_BASE = "/api";
 const ADMIN_TOKEN_KEY = "philotimo-admin-token";
+const isAdminView = new URLSearchParams(window.location.search).get("admin") === "1";
 const EMPTY_PORTAL_DATA = {
   teachers: [],
   students: [],
@@ -54,7 +56,7 @@ const createId = () => {
 };
 
 let portalData = { ...EMPTY_PORTAL_DATA };
-let adminUnlocked = Boolean(sessionStorage.getItem(ADMIN_TOKEN_KEY));
+let adminUnlocked = isAdminView && Boolean(sessionStorage.getItem(ADMIN_TOKEN_KEY));
 
 const getAdminToken = () => sessionStorage.getItem(ADMIN_TOKEN_KEY) || "";
 
@@ -62,6 +64,10 @@ const setAdminToken = (token) => {
   if (token) sessionStorage.setItem(ADMIN_TOKEN_KEY, token);
   else sessionStorage.removeItem(ADMIN_TOKEN_KEY);
 };
+
+if (isAdminView && adminPortal) {
+  adminPortal.hidden = false;
+}
 
 const hydratePortalData = (data = {}) => {
   portalData = Object.fromEntries(
@@ -563,7 +569,7 @@ studentRequestForm?.addEventListener("submit", async (event) => {
     studentRequestForm.reset();
     studentRequestStatus.textContent = response.matchCount
       ? `${student.studentName}'s request has been saved with ${response.matchCount} teacher match${response.matchCount === 1 ? "" : "es"}.`
-      : `${student.studentName}'s request has been saved. Admin can allocate once a matching teacher is approved.`;
+      : `${student.studentName}'s request has been saved. The office can allocate once a matching teacher is approved.`;
     if (adminUnlocked) await refreshAdminState();
   } catch (error) {
     studentRequestStatus.textContent = error.message;
@@ -636,7 +642,7 @@ employerRequestForm?.addEventListener("submit", async (event) => {
     employerRequestForm.reset();
     employerRequestStatus.textContent = response.matchCount
       ? `${request.institutionName}'s request has been saved with ${response.matchCount} candidate match${response.matchCount === 1 ? "" : "es"}.`
-      : `${request.institutionName}'s request has been saved. Admin can match once a suitable jobseeker is approved.`;
+      : `${request.institutionName}'s request has been saved. The office can match once a suitable jobseeker is approved.`;
     if (adminUnlocked) await refreshAdminState();
   } catch (error) {
     employerRequestStatus.textContent = error.message;
@@ -647,6 +653,7 @@ employerRequestForm?.addEventListener("submit", async (event) => {
 
 adminAccessForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (!isAdminView) return;
   const data = new FormData(adminAccessForm);
   const code = data.get("adminCode")?.toString().trim();
 
@@ -670,6 +677,7 @@ adminAccessForm?.addEventListener("submit", async (event) => {
 });
 
 const runAdminAction = async (action, id, selectedId = "") => {
+  if (!isAdminView) return;
   if (!adminUnlocked) {
     adminStatus.textContent = "Please unlock the admin desk first.";
     return;
