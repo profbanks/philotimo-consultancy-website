@@ -16,6 +16,12 @@ Then open:
 http://localhost:4180/
 ```
 
+The public page does not show the administrator panel. To access the consultancy admin desk, open:
+
+```text
+http://localhost:4180/?admin=1#admin-portal
+```
+
 ## Local Admin Access
 
 The default local admin code is:
