@@ -4,6 +4,10 @@ The website backend runs on Netlify Functions and stores portal records in Netli
 
 ## Administrator Access
 
+The administrator panel is not displayed on the public homepage. Open it directly with:
+
+`/?admin=1#admin-portal`
+
 Set these environment variables in Netlify:
 
 - `ADMIN_ACCESS_CODE`: the private code used to unlock the admin desk
