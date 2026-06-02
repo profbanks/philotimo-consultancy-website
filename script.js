@@ -98,6 +98,26 @@ const setBusy = (form, busy) => {
   });
 };
 
+const emailStatusText = (response) => {
+  const notices = Array.isArray(response.emails)
+    ? response.emails
+    : response.email
+      ? [response.email]
+      : [];
+  if (!notices.length) return "";
+
+  const parts = notices.map((email) => {
+    const to = email.to ? ` to ${email.to}` : "";
+    if (email.status === "sent") return `Email sent${to}`;
+    if (email.status === "not-configured") return `email notice saved${to}; SMTP is not configured yet`;
+    if (email.status === "failed") return `email notice saved${to}, but sending failed: ${email.error}`;
+    if (email.status === "skipped") return `email not sent: ${email.error}`;
+    return `email status: ${email.status || "queued"}`;
+  });
+
+  return ` ${parts.join("; ")}.`;
+};
+
 const refreshAdminState = async (message = "") => {
   if (!adminUnlocked) {
     renderPortal();
@@ -690,7 +710,7 @@ const runAdminAction = async (action, id, selectedId = "") => {
     });
     hydratePortalData(response.state);
     renderPortal();
-    adminStatus.textContent = response.message || "Admin action completed.";
+    adminStatus.textContent = `${response.message || "Admin action completed."}${emailStatusText(response)}`;
   } catch (error) {
     adminStatus.textContent = error.message;
   }
