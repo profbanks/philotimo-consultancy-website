@@ -25,6 +25,7 @@ function New-EmptyState {
     employerRequests = @()
     jobPlacements = @()
     contacts = @()
+    notifications = @()
   }
 }
 
@@ -34,7 +35,7 @@ function Normalize-State {
   $normalized = New-EmptyState
   if (-not $State) { return $normalized }
 
-  foreach ($key in @("teachers", "students", "allocations", "jobseekers", "employerRequests", "jobPlacements", "contacts")) {
+  foreach ($key in @("teachers", "students", "allocations", "jobseekers", "employerRequests", "jobPlacements", "contacts", "notifications")) {
     if ($State.PSObject.Properties.Name -contains $key -and $State.$key) {
       $normalized.$key = @($State.$key)
     }
@@ -82,6 +83,78 @@ function New-Record {
   }
   foreach ($key in $Fields.Keys) { $record[$key] = $Fields[$key] }
   return [pscustomobject]$record
+}
+
+function Send-EmailNotification {
+  param($Notification)
+
+  if (-not (Clean $Notification.to)) {
+    return [pscustomobject]@{ status = "skipped"; error = "No email address is attached to this record."; sentAt = "" }
+  }
+
+  if (-not (Clean $env:SMTP_HOST)) {
+    return [pscustomobject]@{ status = "not-configured"; error = "SMTP_HOST is not configured, so the email was saved but not sent."; sentAt = "" }
+  }
+
+  $port = if (Clean $env:SMTP_PORT) { [int](Clean $env:SMTP_PORT) } else { 587 }
+  $from = if (Clean $env:SMTP_FROM) { Clean $env:SMTP_FROM } else { "no-reply@philotimo.local" }
+  $fromName = if (Clean $env:SMTP_FROM_NAME) { Clean $env:SMTP_FROM_NAME } else { "Philotimo Educational Consultancy Services" }
+  $enableSsl = if (Clean $env:SMTP_ENABLE_SSL) { [Convert]::ToBoolean((Clean $env:SMTP_ENABLE_SSL)) } else { $true }
+
+  $message = $null
+  $client = $null
+  try {
+    $message = [System.Net.Mail.MailMessage]::new()
+    $message.From = [System.Net.Mail.MailAddress]::new($from, $fromName)
+    $message.To.Add((Clean $Notification.to))
+    $message.Subject = Clean $Notification.subject
+    $message.Body = Clean $Notification.body
+    $message.IsBodyHtml = $false
+
+    $client = [System.Net.Mail.SmtpClient]::new((Clean $env:SMTP_HOST), $port)
+    $client.EnableSsl = $enableSsl
+    if (Clean $env:SMTP_USERNAME) {
+      $client.Credentials = [System.Net.NetworkCredential]::new((Clean $env:SMTP_USERNAME), (Clean $env:SMTP_PASSWORD))
+    }
+
+    $client.Send($message)
+    return [pscustomobject]@{ status = "sent"; error = ""; sentAt = (Get-Date).ToUniversalTime().ToString("o") }
+  } catch {
+    return [pscustomobject]@{ status = "failed"; error = $_.Exception.Message; sentAt = "" }
+  } finally {
+    if ($message) { $message.Dispose() }
+    if ($client) { $client.Dispose() }
+  }
+}
+
+function Add-EmailNotification {
+  param(
+    $State,
+    [string]$To,
+    [string]$Subject,
+    [string]$Body,
+    [string]$RelatedType,
+    [string]$RelatedId
+  )
+
+  $notification = New-Record @{
+    to = Clean $To
+    subject = Clean $Subject
+    body = Clean $Body
+    relatedType = Clean $RelatedType
+    relatedId = Clean $RelatedId
+    provider = "smtp"
+    status = "queued"
+    sentAt = ""
+    error = ""
+  }
+
+  $delivery = Send-EmailNotification -Notification $notification
+  $notification.status = $delivery.status
+  $notification.sentAt = $delivery.sentAt
+  $notification.error = $delivery.error
+  $State.notifications = @($notification) + @($State.notifications)
+  return $notification
 }
 
 function Require-Fields {
@@ -279,14 +352,39 @@ function Invoke-AdminAction {
     $teacher = @($State.teachers | Where-Object { $_.id -eq $id })[0]
     if (-not $teacher) { throw "Teacher application not found." }
     $teacher.status = if ($action -eq "approve-teacher") { "approved" } elseif ($action -eq "reject-teacher") { "rejected" } else { "pending" }
-    return "$($teacher.teacherName) is now $($teacher.status)."
+    $body = @"
+Dear $($teacher.teacherName),
+
+Your subject teacher application with Philotimo Educational Consultancy Services has been updated.
+
+Status: $($teacher.status)
+Main subject: $($teacher.primarySubject)
+Teaching mode: $($teacher.teachingMode)
+Current workplace: $($teacher.workplace)
+
+Thank you for your interest in working with Philotimo.
+"@
+    $email = Add-EmailNotification -State $State -To $teacher.teacherEmail -Subject "Philotimo teacher application update" -Body $body -RelatedType "teacher" -RelatedId $teacher.id
+    return [pscustomobject]@{ message = "$($teacher.teacherName) is now $($teacher.status)."; emails = @($email) }
   }
 
   if ($action -in @("approve-jobseeker", "reject-jobseeker", "reopen-jobseeker")) {
     $jobseeker = @($State.jobseekers | Where-Object { $_.id -eq $id })[0]
     if (-not $jobseeker) { throw "Jobseeker profile not found." }
     $jobseeker.status = if ($action -eq "approve-jobseeker") { "approved" } elseif ($action -eq "reject-jobseeker") { "rejected" } else { "pending" }
-    return "$($jobseeker.jobName) is now $($jobseeker.status)."
+    $body = @"
+Dear $($jobseeker.jobName),
+
+Your jobseeker profile with Philotimo Educational Consultancy Services has been updated.
+
+Status: $($jobseeker.status)
+Preferred role: $($jobseeker.preferredRole)
+Category: $($jobseeker.jobCategory)
+
+Thank you for registering with the Philotimo talent portal.
+"@
+    $email = Add-EmailNotification -State $State -To $jobseeker.jobEmail -Subject "Philotimo jobseeker profile update" -Body $body -RelatedType "jobseeker" -RelatedId $jobseeker.id
+    return [pscustomobject]@{ message = "$($jobseeker.jobName) is now $($jobseeker.status)."; emails = @($email) }
   }
 
   if ($action -eq "allocate-student") {
@@ -296,7 +394,37 @@ function Invoke-AdminAction {
     $State.allocations = @($State.allocations | Where-Object { $_.studentId -ne $student.id })
     $State.allocations = @((New-Record @{ studentId = $student.id; teacherId = $teacher.id; studentName = $student.studentName; teacherName = $teacher.teacherName; subject = $student.requestedSubject; studentClass = $student.studentClass; mode = $student.preferredMode; location = $student.lessonLocation })) + @($State.allocations)
     $student.status = "allocated"
-    return "$($student.studentName) has been allocated to $($teacher.teacherName)."
+    $guardianBody = @"
+Dear $($student.guardianName),
+
+Philotimo Educational Consultancy Services has updated the lesson request for $($student.studentName).
+
+Allocated teacher: $($teacher.teacherName)
+Subject: $($student.requestedSubject)
+Class: $($student.studentClass)
+Mode: $($student.preferredMode)
+Location: $($student.lessonLocation)
+
+Our office will follow up with the next arrangement.
+"@
+    $teacherBody = @"
+Dear $($teacher.teacherName),
+
+Philotimo Educational Consultancy Services has allocated a learner to you.
+
+Student: $($student.studentName)
+Subject: $($student.requestedSubject)
+Class: $($student.studentClass)
+Mode: $($student.preferredMode)
+Location: $($student.lessonLocation)
+
+Please await office confirmation before commencing lessons.
+"@
+    $emails = @(
+      (Add-EmailNotification -State $State -To $student.guardianEmail -Subject "Philotimo lesson allocation update" -Body $guardianBody -RelatedType "student" -RelatedId $student.id),
+      (Add-EmailNotification -State $State -To $teacher.teacherEmail -Subject "Philotimo learner allocation" -Body $teacherBody -RelatedType "teacher" -RelatedId $teacher.id)
+    )
+    return [pscustomobject]@{ message = "$($student.studentName) has been allocated to $($teacher.teacherName)."; emails = $emails }
   }
 
   if ($action -eq "place-jobseeker") {
@@ -306,21 +434,49 @@ function Invoke-AdminAction {
     $State.jobPlacements = @($State.jobPlacements | Where-Object { $_.requestId -ne $request.id })
     $State.jobPlacements = @((New-Record @{ requestId = $request.id; jobseekerId = $jobseeker.id; institutionName = $request.institutionName; jobName = $jobseeker.jobName; roleNeeded = $request.roleNeeded; categoryNeeded = $request.categoryNeeded; employmentType = $request.requestEmploymentType; location = $request.employerLocation })) + @($State.jobPlacements)
     $request.status = "matched"
-    return "$($jobseeker.jobName) has been matched to $($request.institutionName)."
+    $jobseekerBody = @"
+Dear $($jobseeker.jobName),
+
+Philotimo Educational Consultancy Services has matched your profile to a request.
+
+Institution/company: $($request.institutionName)
+Role: $($request.roleNeeded)
+Employment type: $($request.requestEmploymentType)
+Location: $($request.employerLocation)
+
+Our office will follow up with the next step.
+"@
+    $employerBody = @"
+Dear $($request.contactPerson),
+
+Philotimo Educational Consultancy Services has matched a candidate to your request.
+
+Candidate: $($jobseeker.jobName)
+Role requested: $($request.roleNeeded)
+Category: $($request.categoryNeeded)
+Employment type: $($request.requestEmploymentType)
+
+Our office will follow up with the next step.
+"@
+    $emails = @(
+      (Add-EmailNotification -State $State -To $jobseeker.jobEmail -Subject "Philotimo job match update" -Body $jobseekerBody -RelatedType "jobseeker" -RelatedId $jobseeker.id),
+      (Add-EmailNotification -State $State -To $request.employerEmail -Subject "Philotimo candidate match update" -Body $employerBody -RelatedType "employerRequest" -RelatedId $request.id)
+    )
+    return [pscustomobject]@{ message = "$($jobseeker.jobName) has been matched to $($request.institutionName)."; emails = $emails }
   }
 
   if ($action -eq "clear-allocation") {
     $student = @($State.students | Where-Object { $_.id -eq $id })[0]
     $State.allocations = @($State.allocations | Where-Object { $_.studentId -ne $id })
     if ($student) { $student.status = "open" }
-    return "Allocation has been reopened."
+    return [pscustomobject]@{ message = "Allocation has been reopened."; emails = @() }
   }
 
   if ($action -eq "clear-job-placement") {
     $request = @($State.employerRequests | Where-Object { $_.id -eq $id })[0]
     $State.jobPlacements = @($State.jobPlacements | Where-Object { $_.requestId -ne $id })
     if ($request) { $request.status = "open" }
-    return "Jobseeker match has been reopened."
+    return [pscustomobject]@{ message = "Jobseeker match has been reopened."; emails = @() }
   }
 
   throw "Unsupported admin action."
@@ -370,9 +526,9 @@ function Handle-Api {
     }
     $payload = Get-BodyJson -Request $Request
     $state = Read-State
-    $message = Invoke-AdminAction -State $state -Payload $payload
+    $result = Invoke-AdminAction -State $state -Payload $payload
     $saved = Write-State -State $state
-    Send-Json -Stream $Stream -StatusCode 200 -Body @{ message = $message; state = $saved }
+    Send-Json -Stream $Stream -StatusCode 200 -Body @{ message = $result.message; emails = @($result.emails); state = $saved }
     return
   }
 
@@ -400,7 +556,7 @@ function Handle-Api {
       Send-Json -Stream $Stream -StatusCode 201 -Body @{ message = "$($record.teacherName)'s application has been submitted for admin approval."; record = $record }
     }
     "/students" {
-      Require-Fields -Payload $payload -Fields @("guardianName", "studentName", "guardianPhone", "studentClass", "requestedSubject", "preferredMode", "lessonLocation")
+      Require-Fields -Payload $payload -Fields @("guardianName", "studentName", "guardianPhone", "guardianEmail", "studentClass", "requestedSubject", "preferredMode", "lessonLocation")
       $record = New-Record @{ guardianName = Clean $payload.guardianName; studentName = Clean $payload.studentName; guardianPhone = Clean $payload.guardianPhone; guardianEmail = Clean $payload.guardianEmail; schoolName = Clean $payload.schoolName; studentClass = Clean $payload.studentClass; examTarget = Clean $payload.examTarget; requestedSubject = Clean $payload.requestedSubject; otherRequestedSubjects = Clean $payload.otherRequestedSubjects; preferredMode = Clean $payload.preferredMode; lessonLocation = Clean $payload.lessonLocation; preferredSchedule = Clean $payload.preferredSchedule; learningNeed = Clean $payload.learningNeed; status = "open" }
       $state.students = @($record) + @($state.students)
       $matchCount = Get-TeacherMatchCount -State $state -Student $record
@@ -459,6 +615,8 @@ Write-Host "Local data: $DataPath"
 try {
   while ($true) {
     $client = $server.AcceptTcpClient()
+    $client.ReceiveTimeout = 3000
+    $client.SendTimeout = 3000
     try {
       $stream = $client.GetStream()
       $request = Read-HttpRequest -Stream $stream
