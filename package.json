@@ -1,0 +1,13 @@
+{
+  "name": "philotimo-consultancy-website",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Static consultancy website with Netlify Functions backend for Philotimo Educational Consultancy Services.",
+  "scripts": {
+    "build": "echo Static site ready",
+    "dev": "netlify dev"
+  },
+  "dependencies": {
+    "@netlify/blobs": "^10.7.4"
+  }
+}
