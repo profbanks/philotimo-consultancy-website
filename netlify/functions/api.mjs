@@ -13,6 +13,7 @@ const defaultState = () => ({
   employerRequests: [],
   jobPlacements: [],
   contacts: [],
+  notifications: [],
 });
 
 const publicState = (state) => ({
@@ -118,6 +119,65 @@ const verifyToken = (request) => {
   }
 };
 
+const mailFrom = () =>
+  process.env.MAIL_FROM || process.env.EMAIL_FROM || "Philotimo Educational Consultancy Services <no-reply@philotimo.local>";
+
+const sendEmailNotification = async (notification) => {
+  if (!clean(notification.to)) {
+    return { status: "skipped", error: "No email address is attached to this record.", sentAt: "" };
+  }
+
+  if (!process.env.RESEND_API_KEY) {
+    return { status: "not-configured", error: "RESEND_API_KEY is not configured, so the email was saved but not sent.", sentAt: "" };
+  }
+
+  try {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: mailFrom(),
+        to: [notification.to],
+        subject: notification.subject,
+        text: notification.body,
+      }),
+    });
+
+    if (!response.ok) {
+      const details = await response.text();
+      throw new Error(details || `Email provider returned HTTP ${response.status}.`);
+    }
+
+    return { status: "sent", error: "", sentAt: new Date().toISOString() };
+  } catch (error) {
+    return { status: "failed", error: error.message || "Email delivery failed.", sentAt: "" };
+  }
+};
+
+const addEmailNotification = async (state, { to, subject, body, relatedType, relatedId }) => {
+  const notification = {
+    id: randomUUID(),
+    to: clean(to),
+    subject: clean(subject),
+    body: clean(body),
+    relatedType: clean(relatedType),
+    relatedId: clean(relatedId),
+    provider: "resend",
+    status: "queued",
+    sentAt: "",
+    error: "",
+    createdAt: new Date().toISOString(),
+  };
+
+  const delivery = await sendEmailNotification(notification);
+  Object.assign(notification, delivery);
+  state.notifications.unshift(notification);
+  return notification;
+};
+
 const splitSubjects = (teacher) =>
   [teacher.primarySubject, teacher.otherSubjects]
     .filter(Boolean)
@@ -197,7 +257,7 @@ const createTeacher = (payload) => {
 };
 
 const createStudent = (payload) => {
-  requireFields(payload, ["guardianName", "studentName", "guardianPhone", "studentClass", "requestedSubject", "preferredMode", "lessonLocation"]);
+  requireFields(payload, ["guardianName", "studentName", "guardianPhone", "guardianEmail", "studentClass", "requestedSubject", "preferredMode", "lessonLocation"]);
   return {
     id: randomUUID(),
     guardianName: clean(payload.guardianName),
@@ -278,7 +338,7 @@ const createContact = (payload) => {
 
 const findById = (items, id) => items.find((item) => item.id === id);
 
-const applyAdminAction = (state, payload) => {
+const applyAdminAction = async (state, payload) => {
   const { action, id, selectedId } = payload;
   if (!action || !id) throw new Error("Action and record ID are required.");
 
@@ -286,14 +346,45 @@ const applyAdminAction = (state, payload) => {
     const teacher = findById(state.teachers, id);
     if (!teacher) throw new Error("Teacher application not found.");
     teacher.status = action === "approve-teacher" ? "approved" : action === "reject-teacher" ? "rejected" : "pending";
-    return `${teacher.teacherName} is now ${teacher.status}.`;
+    const email = await addEmailNotification(state, {
+      to: teacher.teacherEmail,
+      subject: "Philotimo teacher application update",
+      relatedType: "teacher",
+      relatedId: teacher.id,
+      body: `Dear ${teacher.teacherName},
+
+Your subject teacher application with Philotimo Educational Consultancy Services has been updated.
+
+Status: ${teacher.status}
+Main subject: ${teacher.primarySubject}
+Teaching mode: ${teacher.teachingMode}
+Current workplace: ${teacher.workplace}
+
+Thank you for your interest in working with Philotimo.`,
+    });
+    return { message: `${teacher.teacherName} is now ${teacher.status}.`, emails: [email] };
   }
 
   if (["approve-jobseeker", "reject-jobseeker", "reopen-jobseeker"].includes(action)) {
     const jobseeker = findById(state.jobseekers, id);
     if (!jobseeker) throw new Error("Jobseeker profile not found.");
     jobseeker.status = action === "approve-jobseeker" ? "approved" : action === "reject-jobseeker" ? "rejected" : "pending";
-    return `${jobseeker.jobName} is now ${jobseeker.status}.`;
+    const email = await addEmailNotification(state, {
+      to: jobseeker.jobEmail,
+      subject: "Philotimo jobseeker profile update",
+      relatedType: "jobseeker",
+      relatedId: jobseeker.id,
+      body: `Dear ${jobseeker.jobName},
+
+Your jobseeker profile with Philotimo Educational Consultancy Services has been updated.
+
+Status: ${jobseeker.status}
+Preferred role: ${jobseeker.preferredRole}
+Category: ${jobseeker.jobCategory}
+
+Thank you for registering with the Philotimo talent portal.`,
+    });
+    return { message: `${jobseeker.jobName} is now ${jobseeker.status}.`, emails: [email] };
   }
 
   if (action === "allocate-student") {
@@ -314,7 +405,43 @@ const applyAdminAction = (state, payload) => {
       createdAt: new Date().toISOString(),
     });
     student.status = "allocated";
-    return `${student.studentName} has been allocated to ${teacher.teacherName}.`;
+    const emails = [
+      await addEmailNotification(state, {
+        to: student.guardianEmail,
+        subject: "Philotimo lesson allocation update",
+        relatedType: "student",
+        relatedId: student.id,
+        body: `Dear ${student.guardianName},
+
+Philotimo Educational Consultancy Services has updated the lesson request for ${student.studentName}.
+
+Allocated teacher: ${teacher.teacherName}
+Subject: ${student.requestedSubject}
+Class: ${student.studentClass}
+Mode: ${student.preferredMode}
+Location: ${student.lessonLocation}
+
+Our office will follow up with the next arrangement.`,
+      }),
+      await addEmailNotification(state, {
+        to: teacher.teacherEmail,
+        subject: "Philotimo learner allocation",
+        relatedType: "teacher",
+        relatedId: teacher.id,
+        body: `Dear ${teacher.teacherName},
+
+Philotimo Educational Consultancy Services has allocated a learner to you.
+
+Student: ${student.studentName}
+Subject: ${student.requestedSubject}
+Class: ${student.studentClass}
+Mode: ${student.preferredMode}
+Location: ${student.lessonLocation}
+
+Please await office confirmation before commencing lessons.`,
+      }),
+    ];
+    return { message: `${student.studentName} has been allocated to ${teacher.teacherName}.`, emails };
   }
 
   if (action === "place-jobseeker") {
@@ -335,21 +462,55 @@ const applyAdminAction = (state, payload) => {
       createdAt: new Date().toISOString(),
     });
     request.status = "matched";
-    return `${jobseeker.jobName} has been matched to ${request.institutionName}.`;
+    const emails = [
+      await addEmailNotification(state, {
+        to: jobseeker.jobEmail,
+        subject: "Philotimo job match update",
+        relatedType: "jobseeker",
+        relatedId: jobseeker.id,
+        body: `Dear ${jobseeker.jobName},
+
+Philotimo Educational Consultancy Services has matched your profile to a request.
+
+Institution/company: ${request.institutionName}
+Role: ${request.roleNeeded}
+Employment type: ${request.requestEmploymentType}
+Location: ${request.employerLocation}
+
+Our office will follow up with the next step.`,
+      }),
+      await addEmailNotification(state, {
+        to: request.employerEmail,
+        subject: "Philotimo candidate match update",
+        relatedType: "employerRequest",
+        relatedId: request.id,
+        body: `Dear ${request.contactPerson},
+
+Philotimo Educational Consultancy Services has matched a candidate to your request.
+
+Candidate: ${jobseeker.jobName}
+Role requested: ${request.roleNeeded}
+Category: ${request.categoryNeeded}
+Employment type: ${request.requestEmploymentType}
+
+Our office will follow up with the next step.`,
+      }),
+    ];
+    return { message: `${jobseeker.jobName} has been matched to ${request.institutionName}.`, emails };
   }
 
   if (action === "clear-allocation") {
     const student = findById(state.students, id);
     state.allocations = state.allocations.filter((allocation) => allocation.studentId !== id);
     if (student) student.status = "open";
-    return "Allocation has been reopened.";
+    return { message: "Allocation has been reopened.", emails: [] };
   }
 
   if (action === "clear-job-placement") {
     const request = findById(state.employerRequests, id);
     state.jobPlacements = state.jobPlacements.filter((placement) => placement.requestId !== id);
     if (request) request.status = "open";
-    return "Jobseeker match has been reopened.";
+    return { message: "Jobseeker match has been reopened.", emails: [] };
   }
 
   throw new Error("Unsupported admin action.");
@@ -389,9 +550,9 @@ export default async function handler(request) {
     if (route === "/admin/action" && method === "POST") {
       if (!verifyToken(request)) return unauthorized();
       const state = await readState();
-      const message = applyAdminAction(state, await readJsonBody(request));
+      const result = await applyAdminAction(state, await readJsonBody(request));
       const saved = await writeState(state);
-      return json(200, { message, state: publicState(saved) });
+      return json(200, { message: result.message, emails: result.emails || [], state: publicState(saved) });
     }
 
     if (route === "/teachers" && method === "POST") {
