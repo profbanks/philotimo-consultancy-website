@@ -97,7 +97,7 @@
           <form class="portal-form" id="teacher-application-form">
             <div class="portal-form-head">
               <span>Teacher Application</span>
-              <strong>Pending admin approval</strong>
+              <strong>Pending review</strong>
             </div>
             <div class="form-grid two">
               <label>
@@ -302,7 +302,7 @@
           </form>
         </div>
 
-        <div class="admin-portal" aria-labelledby="admin-portal-title">
+        <div class="admin-portal" id="admin-portal" data-admin-portal aria-labelledby="admin-portal-title" hidden>
           <div class="admin-access">
             <div>
               <p class="eyebrow">Admin desk</p>
@@ -410,7 +410,7 @@
           <form class="portal-form" id="jobseeker-registration-form">
             <div class="portal-form-head">
               <span>Jobseeker Registration</span>
-              <strong>Admin vetting required</strong>
+              <strong>Vetting required</strong>
             </div>
             <div class="form-grid two">
               <label>
@@ -993,6 +993,6 @@
       <a href="#top">Back to top</a>
     </footer>
 
-    <script src="script.js"></script>
+    <script src="script.js?v=admin-private"></script>
   </body>
 </html>
