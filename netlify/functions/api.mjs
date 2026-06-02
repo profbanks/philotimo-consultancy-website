@@ -32,24 +32,25 @@ const normalizeState = (state = {}) => {
   );
 };
 
-const json = (statusCode, body) => ({
-  statusCode,
-  headers: {
+const json = (status, body) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: {
     "Content-Type": "application/json",
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Headers": "Content-Type, Authorization",
     "Access-Control-Allow-Methods": "GET, POST, PATCH, OPTIONS",
   },
-  body: JSON.stringify(body),
-});
+  });
 
 const badRequest = (message) => json(400, { message });
 const unauthorized = () => json(401, { message: "Administrator access is required." });
 
-const readJsonBody = (event) => {
-  if (!event.body) return {};
+const readJsonBody = async (request) => {
+  const text = await request.text();
+  if (!text) return {};
   try {
-    return JSON.parse(event.body);
+    return JSON.parse(text);
   } catch {
     throw new Error("Request body must be valid JSON.");
   }
@@ -103,8 +104,8 @@ const issueToken = () => {
   return `${body}.${sign(body)}`;
 };
 
-const verifyToken = (event) => {
-  const header = event.headers.authorization || event.headers.Authorization || "";
+const verifyToken = (request) => {
+  const header = request.headers.get("authorization") || "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : "";
   const [body, signature] = token.split(".");
   if (!body || !signature || !safeEqual(sign(body), signature)) return false;
@@ -354,48 +355,48 @@ const applyAdminAction = (state, payload) => {
   throw new Error("Unsupported admin action.");
 };
 
-const routeFromEvent = (event) => {
-  const path = event.rawUrl ? new URL(event.rawUrl).pathname : event.path;
+const routeFromRequest = (request) => {
+  const path = new URL(request.url).pathname;
   return path
     .replace(/^\/api/, "")
     .replace(/^\/\.netlify\/functions\/api/, "")
     .replace(/\/$/, "") || "/";
 };
 
-export const handler = async (event) => {
-  if (event.httpMethod === "OPTIONS") return json(200, { ok: true });
+export default async function handler(request) {
+  if (request.method === "OPTIONS") return json(200, { ok: true });
 
   try {
-    const route = routeFromEvent(event);
-    const method = event.httpMethod;
+    const route = routeFromRequest(request);
+    const method = request.method;
 
     if (route === "/health" && method === "GET") {
       return json(200, { ok: true, service: "Philotimo backend" });
     }
 
     if (route === "/admin/login" && method === "POST") {
-      const payload = readJsonBody(event);
+      const payload = await readJsonBody(request);
       const submittedCode = clean(payload.adminCode || payload.password);
       if (!submittedCode || submittedCode !== configuredAdminCode()) return unauthorized();
       return json(200, { token: issueToken(), expiresInHours: SESSION_HOURS });
     }
 
     if (route === "/admin/state" && method === "GET") {
-      if (!verifyToken(event)) return unauthorized();
+      if (!verifyToken(request)) return unauthorized();
       return json(200, publicState(await readState()));
     }
 
     if (route === "/admin/action" && method === "POST") {
-      if (!verifyToken(event)) return unauthorized();
+      if (!verifyToken(request)) return unauthorized();
       const state = await readState();
-      const message = applyAdminAction(state, readJsonBody(event));
+      const message = applyAdminAction(state, await readJsonBody(request));
       const saved = await writeState(state);
       return json(200, { message, state: publicState(saved) });
     }
 
     if (route === "/teachers" && method === "POST") {
       const state = await readState();
-      const teacher = createTeacher(readJsonBody(event));
+      const teacher = createTeacher(await readJsonBody(request));
       state.teachers.unshift(teacher);
       await writeState(state);
       return json(201, { message: `${teacher.teacherName}'s application has been submitted for admin approval.`, record: teacher });
@@ -403,7 +404,7 @@ export const handler = async (event) => {
 
     if (route === "/students" && method === "POST") {
       const state = await readState();
-      const student = createStudent(readJsonBody(event));
+      const student = createStudent(await readJsonBody(request));
       state.students.unshift(student);
       const matchCount = getTeacherMatches(state, student).length;
       await writeState(state);
@@ -412,7 +413,7 @@ export const handler = async (event) => {
 
     if (route === "/jobseekers" && method === "POST") {
       const state = await readState();
-      const jobseeker = createJobseeker(readJsonBody(event));
+      const jobseeker = createJobseeker(await readJsonBody(request));
       state.jobseekers.unshift(jobseeker);
       await writeState(state);
       return json(201, { message: `${jobseeker.jobName}'s profile has been submitted for admin vetting.`, record: jobseeker });
@@ -420,16 +421,16 @@ export const handler = async (event) => {
 
     if (route === "/employer-requests" && method === "POST") {
       const state = await readState();
-      const request = createEmployerRequest(readJsonBody(event));
-      state.employerRequests.unshift(request);
-      const matchCount = getJobseekerMatches(state, request).length;
+      const employerRequest = createEmployerRequest(await readJsonBody(request));
+      state.employerRequests.unshift(employerRequest);
+      const matchCount = getJobseekerMatches(state, employerRequest).length;
       await writeState(state);
-      return json(201, { message: `${request.institutionName}'s request has been saved.`, record: request, matchCount });
+      return json(201, { message: `${employerRequest.institutionName}'s request has been saved.`, record: employerRequest, matchCount });
     }
 
     if (route === "/contacts" && method === "POST") {
       const state = await readState();
-      const contact = createContact(readJsonBody(event));
+      const contact = createContact(await readJsonBody(request));
       state.contacts.unshift(contact);
       await writeState(state);
       return json(201, { message: `Thank you, ${contact.name}. Your enquiry has been submitted.`, record: contact });
@@ -439,4 +440,8 @@ export const handler = async (event) => {
   } catch (error) {
     return badRequest(error.message || "Request could not be processed.");
   }
+}
+
+export const config = {
+  path: "/api/*",
 };
