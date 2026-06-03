@@ -1055,6 +1055,11 @@ img {
     linear-gradient(180deg, #fffaf0 0%, #f8faf6 44%, #eef6f4 100%);
 }
 
+.subscription-portal {
+  background:
+    linear-gradient(180deg, #f5fbfb 0%, #fffdf6 50%, #ffffff 100%);
+}
+
 .teacher-portal > .section-heading {
   max-width: 980px;
   margin: 0 auto 34px;
@@ -1082,6 +1087,20 @@ img {
 .portal-form.accent {
   border-color: rgba(214, 159, 25, 0.3);
   background: #fffdf6;
+}
+
+.subscription-guide p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.65;
+}
+
+.receipt-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding-left: 20px;
+  color: var(--muted);
 }
 
 .portal-form-head,
@@ -1141,6 +1160,12 @@ img {
 
 .portal-form textarea {
   resize: vertical;
+}
+
+.field-note {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 650;
 }
 
 .portal-form input:focus,
@@ -1327,6 +1352,16 @@ img {
   color: var(--muted);
 }
 
+.receipt-code {
+  display: inline-flex;
+  width: fit-content;
+  padding: 8px 10px;
+  border-radius: 8px;
+  color: var(--green-dark) !important;
+  background: rgba(214, 159, 25, 0.18);
+  font-weight: 850;
+}
+
 .portal-meta {
   display: flex;
   flex-wrap: wrap;
@@ -1369,6 +1404,9 @@ img {
 }
 
 .mini-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-height: 38px;
   padding: 8px 11px;
   border: 0;
@@ -1378,6 +1416,7 @@ img {
   font: inherit;
   font-size: 0.82rem;
   font-weight: 900;
+  text-decoration: none;
   cursor: pointer;
 }
 
