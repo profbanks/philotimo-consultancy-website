@@ -33,6 +33,7 @@
         <a href="#services">Services</a>
         <a href="#teacher-portal">Student/Teacher</a>
         <a href="#career-portal">Talent Portal</a>
+        <a href="#subscription-portal">Subscriptions</a>
         <a href="#clients">Clients</a>
         <a href="#commitments">Commitments</a>
         <a href="#results">Results</a>
@@ -356,6 +357,14 @@
                 <span id="contact-count">0</span>
                 <strong>Contact enquiries</strong>
               </div>
+              <div>
+                <span id="pending-subscription-count">0</span>
+                <strong>Pending subscriptions</strong>
+              </div>
+              <div>
+                <span id="verified-subscription-count">0</span>
+                <strong>Verified receipts</strong>
+              </div>
             </div>
 
             <div class="admin-grid">
@@ -394,6 +403,14 @@
               <section class="admin-panel wide" aria-labelledby="contact-enquiries-title">
                 <h4 id="contact-enquiries-title">Contact enquiries</h4>
                 <div class="portal-list" id="contact-enquiries"></div>
+              </section>
+              <section class="admin-panel wide" aria-labelledby="pending-subscriptions-title">
+                <h4 id="pending-subscriptions-title">Subscriptions awaiting payment verification</h4>
+                <div class="portal-list" id="pending-subscriptions"></div>
+              </section>
+              <section class="admin-panel wide" aria-labelledby="verified-subscriptions-title">
+                <h4 id="verified-subscriptions-title">Verified subscriptions and receipts</h4>
+                <div class="portal-list" id="verified-subscriptions"></div>
               </section>
             </div>
           </div>
@@ -584,6 +601,89 @@
             <button class="button primary" type="submit">Request jobseekers</button>
             <p class="form-status" id="employer-request-status" role="status" aria-live="polite"></p>
           </form>
+        </div>
+      </section>
+
+      <section class="teacher-portal subscription-portal" id="subscription-portal" aria-labelledby="subscription-portal-title">
+        <div class="section-heading">
+          <p class="eyebrow">Subscriptions, proof of payment, and receipts</p>
+          <h2 id="subscription-portal-title">Subscribe to Philotimo services and upload proof of payment for admin verification.</h2>
+        </div>
+
+        <div class="portal-shell">
+          <form class="portal-form" id="subscription-form">
+            <div class="portal-form-head">
+              <span>SUB</span>
+              <strong>Subscriber details</strong>
+            </div>
+            <label>
+              Full name
+              <input name="subscriberName" type="text" autocomplete="name" required />
+            </label>
+            <label>
+              Email address
+              <input name="subscriberEmail" type="email" autocomplete="email" required />
+            </label>
+            <label>
+              Phone number
+              <input name="subscriberPhone" type="tel" autocomplete="tel" required />
+            </label>
+            <label>
+              Subscription type
+              <select name="subscriptionType" required>
+                <option value="">Select subscription</option>
+                <option>Student lesson subscription</option>
+                <option>Teacher portal subscription</option>
+                <option>Jobseeker talent bank subscription</option>
+                <option>Institution or employer request subscription</option>
+                <option>Consultancy retainership</option>
+                <option>Training and seminar subscription</option>
+              </select>
+            </label>
+            <label>
+              Amount paid
+              <input name="amountPaid" type="number" min="0" step="100" placeholder="Enter amount in naira" required />
+            </label>
+            <label>
+              Payment reference or teller number
+              <input name="paymentReference" type="text" required />
+            </label>
+            <label>
+              Payment date
+              <input name="paymentDate" type="date" required />
+            </label>
+            <label>
+              Proof of payment
+              <input name="proofOfPayment" type="file" accept="image/png,image/jpeg,image/webp,application/pdf" required />
+              <small class="field-note">Upload a clear image or PDF. Maximum file size: 1.5 MB.</small>
+            </label>
+            <label>
+              Notes for the office
+              <textarea name="subscriptionNotes" rows="4" placeholder="Mention the service, student name, school, or any useful detail."></textarea>
+            </label>
+            <label class="consent-line">
+              <input name="subscriptionConsent" type="checkbox" required />
+              <span>I confirm that this payment proof is accurate and may be verified by Philotimo Educational Consultancy Services.</span>
+            </label>
+            <button class="button primary" type="submit">Submit subscription</button>
+            <p class="form-status" id="subscription-status" role="status" aria-live="polite"></p>
+          </form>
+
+          <aside class="portal-form accent subscription-guide">
+            <div class="portal-form-head">
+              <span>REC</span>
+              <strong>Verification and receipt</strong>
+            </div>
+            <p>
+              After submission, the office reviews the proof of payment in the admin desk. Once payment is verified,
+              the subscriber receives a payment confirmation and receipt number by email.
+            </p>
+            <ul class="receipt-list">
+              <li>Admin verifies or rejects each payment record.</li>
+              <li>Verified payments are issued official receipt numbers.</li>
+              <li>Email notices are saved automatically and sent when email delivery is configured.</li>
+            </ul>
+          </aside>
         </div>
       </section>
 
@@ -993,6 +1093,6 @@
       <a href="#top">Back to top</a>
     </footer>
 
-    <script src="script.js?v=admin-private-email"></script>
+    <script src="script.js?v=subscription-receipts"></script>
   </body>
 </html>
