@@ -49,7 +49,9 @@ This local JSON backend is separate from Netlify. The Netlify deployment can rem
 
 ## Local Email Notifications
 
-When an administrator approves a teacher, allocates a student, vets a jobseeker, or matches a candidate to an employer request, the backend creates corresponding email notices immediately.
+When an administrator approves a teacher, allocates a student, vets a jobseeker, matches a candidate to an employer request, or verifies a subscription payment, the backend creates corresponding email notices immediately.
+
+Subscription proofs of payment are saved in the same local JSON file as data URLs. When the admin verifies a subscription, the backend issues a receipt number such as `PES-REC-2026-0001` and includes it in the subscriber email notice.
 
 To send real emails from localhost, set SMTP details before starting the server:
 
