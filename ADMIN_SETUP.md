@@ -34,6 +34,7 @@ Change this in Netlify before using the portal for real student, teacher, jobsee
 - `POST /api/students`
 - `POST /api/jobseekers`
 - `POST /api/employer-requests`
+- `POST /api/subscriptions`
 - `POST /api/admin/login`
 - `GET /api/admin/state`
 - `POST /api/admin/action`
@@ -46,3 +47,5 @@ Admin actions create email notices immediately. To send real emails from the Net
 - `MAIL_FROM`: verified sender, for example `Philotimo Educational Consultancy Services <info@yourdomain.com>`
 
 If `RESEND_API_KEY` is not set, the backend saves the notice in the portal record and reports that email delivery is not configured yet.
+
+Subscription proofs of payment are stored in Netlify Blobs with the portal records. When the admin verifies a subscription payment, the backend generates a receipt number and sends or saves a receipt email notice for the subscriber.
