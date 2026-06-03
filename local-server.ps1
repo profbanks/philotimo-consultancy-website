@@ -25,6 +25,7 @@ function New-EmptyState {
     employerRequests = @()
     jobPlacements = @()
     contacts = @()
+    subscriptions = @()
     notifications = @()
   }
 }
@@ -35,7 +36,7 @@ function Normalize-State {
   $normalized = New-EmptyState
   if (-not $State) { return $normalized }
 
-  foreach ($key in @("teachers", "students", "allocations", "jobseekers", "employerRequests", "jobPlacements", "contacts", "notifications")) {
+  foreach ($key in @("teachers", "students", "allocations", "jobseekers", "employerRequests", "jobPlacements", "contacts", "subscriptions", "notifications")) {
     if ($State.PSObject.Properties.Name -contains $key -and $State.$key) {
       $normalized.$key = @($State.$key)
     }
@@ -155,6 +156,14 @@ function Add-EmailNotification {
   $notification.error = $delivery.error
   $State.notifications = @($notification) + @($State.notifications)
   return $notification
+}
+
+function New-SubscriptionReceiptNumber {
+  param($State)
+
+  $year = (Get-Date).ToString("yyyy")
+  $count = @($State.subscriptions | Where-Object { Clean $_.receiptNumber }).Count + 1
+  return "PES-REC-$year-{0:D4}" -f $count
 }
 
 function Require-Fields {
@@ -387,6 +396,67 @@ Thank you for registering with the Philotimo talent portal.
     return [pscustomobject]@{ message = "$($jobseeker.jobName) is now $($jobseeker.status)."; emails = @($email) }
   }
 
+  if ($action -in @("verify-subscription", "reject-subscription", "reopen-subscription")) {
+    $subscription = @($State.subscriptions | Where-Object { $_.id -eq $id })[0]
+    if (-not $subscription) { throw "Subscription record not found." }
+
+    if ($action -eq "verify-subscription") {
+      $subscription.status = "verified"
+      $subscription.verifiedAt = (Get-Date).ToUniversalTime().ToString("o")
+      if (-not (Clean $subscription.receiptNumber)) {
+        $subscription.receiptNumber = New-SubscriptionReceiptNumber -State $State
+      }
+      $body = @"
+Dear $($subscription.subscriberName),
+
+Philotimo Educational Consultancy Services has verified your subscription payment.
+
+Subscription: $($subscription.subscriptionType)
+Amount paid: NGN $($subscription.amountPaid)
+Payment reference: $($subscription.paymentReference)
+Receipt number: $($subscription.receiptNumber)
+Payment date: $($subscription.paymentDate)
+
+Please keep this receipt number for your records. Thank you for choosing Philotimo.
+"@
+      $email = Add-EmailNotification -State $State -To $subscription.subscriberEmail -Subject "Philotimo subscription receipt" -Body $body -RelatedType "subscription" -RelatedId $subscription.id
+      return [pscustomobject]@{ message = "$($subscription.subscriberName)'s payment has been verified and receipt $($subscription.receiptNumber) has been issued."; emails = @($email) }
+    }
+
+    if ($action -eq "reject-subscription") {
+      $subscription.status = "rejected"
+      $subscription.verifiedAt = ""
+      $body = @"
+Dear $($subscription.subscriberName),
+
+Philotimo Educational Consultancy Services has reviewed your subscription payment proof.
+
+Status: rejected
+Subscription: $($subscription.subscriptionType)
+Payment reference: $($subscription.paymentReference)
+
+Please contact the office with a clearer proof of payment or corrected payment details so the payment can be verified.
+"@
+      $email = Add-EmailNotification -State $State -To $subscription.subscriberEmail -Subject "Philotimo subscription payment review" -Body $body -RelatedType "subscription" -RelatedId $subscription.id
+      return [pscustomobject]@{ message = "$($subscription.subscriberName)'s subscription proof has been rejected."; emails = @($email) }
+    }
+
+    $subscription.status = "pending"
+    $subscription.verifiedAt = ""
+    $body = @"
+Dear $($subscription.subscriberName),
+
+Philotimo Educational Consultancy Services has reopened your subscription payment record for another review.
+
+Subscription: $($subscription.subscriptionType)
+Payment reference: $($subscription.paymentReference)
+
+The office will update you once the review is completed.
+"@
+    $email = Add-EmailNotification -State $State -To $subscription.subscriberEmail -Subject "Philotimo subscription review reopened" -Body $body -RelatedType "subscription" -RelatedId $subscription.id
+    return [pscustomobject]@{ message = "$($subscription.subscriberName)'s subscription has been moved back to pending review."; emails = @($email) }
+  }
+
   if ($action -eq "allocate-student") {
     $student = @($State.students | Where-Object { $_.id -eq $id })[0]
     $teacher = @($State.teachers | Where-Object { $_.id -eq $selectedId })[0]
@@ -577,6 +647,29 @@ function Handle-Api {
       $matchCount = Get-JobseekerMatchCount -State $state -Request $record
       Write-State -State $state | Out-Null
       Send-Json -Stream $Stream -StatusCode 201 -Body @{ message = "$($record.institutionName)'s request has been saved."; record = $record; matchCount = $matchCount }
+    }
+    "/subscriptions" {
+      Require-Fields -Payload $payload -Fields @("subscriberName", "subscriberEmail", "subscriberPhone", "subscriptionType", "amountPaid", "paymentReference", "paymentDate", "proofFileName", "proofFileType", "proofDataUrl")
+      $record = New-Record @{
+        subscriberName = Clean $payload.subscriberName
+        subscriberEmail = Clean $payload.subscriberEmail
+        subscriberPhone = Clean $payload.subscriberPhone
+        subscriptionType = Clean $payload.subscriptionType
+        amountPaid = Clean $payload.amountPaid
+        paymentReference = Clean $payload.paymentReference
+        paymentDate = Clean $payload.paymentDate
+        proofFileName = Clean $payload.proofFileName
+        proofFileType = Clean $payload.proofFileType
+        proofFileSize = Clean $payload.proofFileSize
+        proofDataUrl = Clean $payload.proofDataUrl
+        subscriptionNotes = Clean $payload.subscriptionNotes
+        status = "pending"
+        receiptNumber = ""
+        verifiedAt = ""
+      }
+      $state.subscriptions = @($record) + @($state.subscriptions)
+      Write-State -State $state | Out-Null
+      Send-Json -Stream $Stream -StatusCode 201 -Body @{ message = "$($record.subscriberName), your subscription and proof of payment have been submitted for admin verification."; record = $record }
     }
     default {
       Send-Json -Stream $Stream -StatusCode 404 -Body @{ message = "API route not found." }
