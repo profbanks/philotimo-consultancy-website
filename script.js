@@ -10,12 +10,14 @@ const teacherApplicationForm = document.querySelector("#teacher-application-form
 const studentRequestForm = document.querySelector("#student-request-form");
 const jobseekerRegistrationForm = document.querySelector("#jobseeker-registration-form");
 const employerRequestForm = document.querySelector("#employer-request-form");
+const subscriptionForm = document.querySelector("#subscription-form");
 const adminAccessForm = document.querySelector("#admin-access-form");
 const adminPortal = document.querySelector("[data-admin-portal]");
 const teacherApplicationStatus = document.querySelector("#teacher-application-status");
 const studentRequestStatus = document.querySelector("#student-request-status");
 const jobseekerStatus = document.querySelector("#jobseeker-status");
 const employerRequestStatus = document.querySelector("#employer-request-status");
+const subscriptionStatus = document.querySelector("#subscription-status");
 const adminStatus = document.querySelector("#admin-status");
 const adminWorkspace = document.querySelector("#admin-workspace");
 const pendingTeachersList = document.querySelector("#pending-teachers");
@@ -27,6 +29,8 @@ const approvedJobseekersList = document.querySelector("#approved-jobseekers");
 const employerRequestsList = document.querySelector("#employer-requests");
 const jobPlacementBoard = document.querySelector("#job-placement-board");
 const contactEnquiriesList = document.querySelector("#contact-enquiries");
+const pendingSubscriptionsList = document.querySelector("#pending-subscriptions");
+const verifiedSubscriptionsList = document.querySelector("#verified-subscriptions");
 const pendingCount = document.querySelector("#pending-count");
 const approvedCount = document.querySelector("#approved-count");
 const studentCount = document.querySelector("#student-count");
@@ -36,9 +40,12 @@ const approvedJobseekerCount = document.querySelector("#approved-jobseeker-count
 const employerRequestCount = document.querySelector("#employer-request-count");
 const jobPlacementCount = document.querySelector("#job-placement-count");
 const contactCount = document.querySelector("#contact-count");
+const pendingSubscriptionCount = document.querySelector("#pending-subscription-count");
+const verifiedSubscriptionCount = document.querySelector("#verified-subscription-count");
 
 const API_BASE = "/api";
 const ADMIN_TOKEN_KEY = "philotimo-admin-token";
+const MAX_PROOF_SIZE = 1.5 * 1024 * 1024;
 const isAdminView = new URLSearchParams(window.location.search).get("admin") === "1";
 const EMPTY_PORTAL_DATA = {
   teachers: [],
@@ -48,6 +55,7 @@ const EMPTY_PORTAL_DATA = {
   employerRequests: [],
   jobPlacements: [],
   contacts: [],
+  subscriptions: [],
 };
 
 const createId = () => {
@@ -149,6 +157,38 @@ const escapeHtml = (value = "") =>
 
 const formatDate = (value) =>
   new Intl.DateTimeFormat("en-NG", { dateStyle: "medium" }).format(new Date(value));
+
+const formatCurrency = (value) =>
+  new Intl.NumberFormat("en-NG", {
+    style: "currency",
+    currency: "NGN",
+    maximumFractionDigits: 0,
+  }).format(Number(value || 0));
+
+const readProofFile = (file) =>
+  new Promise((resolve, reject) => {
+    if (!file) {
+      reject(new Error("Please upload proof of payment."));
+      return;
+    }
+
+    if (file.size > MAX_PROOF_SIZE) {
+      reject(new Error("The proof of payment is too large. Please upload a file that is 1.5 MB or smaller."));
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.addEventListener("load", () => {
+      resolve({
+        proofFileName: file.name,
+        proofFileType: file.type || "application/octet-stream",
+        proofFileSize: file.size,
+        proofDataUrl: reader.result,
+      });
+    });
+    reader.addEventListener("error", () => reject(new Error("The proof of payment could not be read.")));
+    reader.readAsDataURL(file);
+  });
 
 const splitSubjects = (teacher) =>
   [teacher.primarySubject, teacher.otherSubjects]
@@ -424,6 +464,51 @@ const renderContactCard = (contact) => `
     <p>${escapeHtml(contact.message)}</p>
   </article>`;
 
+const renderSubscriptionCard = (subscription, mode) => {
+  const statusClass =
+    subscription.status === "verified" ? "approved" : subscription.status === "rejected" ? "rejected" : "pending";
+  const proofLink = subscription.proofDataUrl
+    ? `<a class="mini-button secondary" href="${escapeHtml(subscription.proofDataUrl)}" target="_blank" rel="noopener" download="${escapeHtml(subscription.proofFileName || "proof-of-payment")}">View proof</a>`
+    : "";
+  const receipt = subscription.receiptNumber
+    ? `<p class="receipt-code"><strong>Receipt:</strong> ${escapeHtml(subscription.receiptNumber)}</p>`
+    : "";
+  const actions =
+    mode === "pending"
+      ? `
+        <div class="record-actions">
+          ${proofLink}
+          <button class="mini-button" type="button" data-portal-action="verify-subscription" data-id="${subscription.id}">Verify payment</button>
+          <button class="mini-button warn" type="button" data-portal-action="reject-subscription" data-id="${subscription.id}">Reject</button>
+        </div>`
+      : `
+        <div class="record-actions">
+          ${proofLink}
+          <button class="mini-button secondary" type="button" data-portal-action="reopen-subscription" data-id="${subscription.id}">Move to pending</button>
+        </div>`;
+
+  return `
+    <article class="portal-record">
+      <header>
+        <div>
+          <h5>${escapeHtml(subscription.subscriberName)}</h5>
+          <p>${escapeHtml(subscription.subscriptionType)} | ${formatCurrency(subscription.amountPaid)}</p>
+        </div>
+        <span class="status-pill ${statusClass}">${escapeHtml(subscription.status)}</span>
+      </header>
+      <div class="portal-meta">
+        <span>${escapeHtml(subscription.subscriberPhone)}</span>
+        <span>${escapeHtml(subscription.subscriberEmail)}</span>
+        <span>Ref: ${escapeHtml(subscription.paymentReference)}</span>
+        <span>Paid: ${escapeHtml(subscription.paymentDate)}</span>
+        <span>Submitted: ${formatDate(subscription.createdAt)}</span>
+      </div>
+      <p>${escapeHtml(subscription.subscriptionNotes || "No extra note supplied.")}</p>
+      ${receipt}
+      ${actions}
+    </article>`;
+};
+
 const emptyState = (message) => `<p class="empty-state">${message}</p>`;
 
 const renderPortal = () => {
@@ -431,6 +516,8 @@ const renderPortal = () => {
   const approvedTeachers = getApprovedTeachers();
   const pendingJobseekers = portalData.jobseekers.filter((jobseeker) => jobseeker.status === "pending");
   const approvedJobseekers = getApprovedJobseekers();
+  const pendingSubscriptions = portalData.subscriptions.filter((subscription) => subscription.status === "pending");
+  const verifiedSubscriptions = portalData.subscriptions.filter((subscription) => subscription.status === "verified");
 
   if (pendingCount) pendingCount.textContent = String(pendingTeachers.length);
   if (approvedCount) approvedCount.textContent = String(approvedTeachers.length);
@@ -441,6 +528,8 @@ const renderPortal = () => {
   if (employerRequestCount) employerRequestCount.textContent = String(portalData.employerRequests.length);
   if (jobPlacementCount) jobPlacementCount.textContent = String(portalData.jobPlacements.length);
   if (contactCount) contactCount.textContent = String(portalData.contacts.length);
+  if (pendingSubscriptionCount) pendingSubscriptionCount.textContent = String(pendingSubscriptions.length);
+  if (verifiedSubscriptionCount) verifiedSubscriptionCount.textContent = String(verifiedSubscriptions.length);
 
   if (!adminUnlocked) return;
 
@@ -479,6 +568,14 @@ const renderPortal = () => {
   contactEnquiriesList.innerHTML = portalData.contacts.length
     ? portalData.contacts.map(renderContactCard).join("")
     : emptyState("No contact enquiry has been submitted yet.");
+
+  pendingSubscriptionsList.innerHTML = pendingSubscriptions.length
+    ? pendingSubscriptions.map((subscription) => renderSubscriptionCard(subscription, "pending")).join("")
+    : emptyState("No subscription is awaiting payment verification.");
+
+  verifiedSubscriptionsList.innerHTML = verifiedSubscriptions.length
+    ? verifiedSubscriptions.map((subscription) => renderSubscriptionCard(subscription, "verified")).join("")
+    : emptyState("No subscription receipt has been issued yet.");
 };
 
 navToggle?.addEventListener("click", () => {
@@ -671,6 +768,40 @@ employerRequestForm?.addEventListener("submit", async (event) => {
   }
 });
 
+subscriptionForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const data = new FormData(subscriptionForm);
+  const file = data.get("proofOfPayment");
+
+  try {
+    setBusy(subscriptionForm, true);
+    subscriptionStatus.textContent = "Reading proof of payment...";
+    const proof = await readProofFile(file instanceof File ? file : null);
+    const subscription = {
+      subscriberName: data.get("subscriberName").toString().trim(),
+      subscriberEmail: data.get("subscriberEmail").toString().trim(),
+      subscriberPhone: data.get("subscriberPhone").toString().trim(),
+      subscriptionType: data.get("subscriptionType").toString(),
+      amountPaid: data.get("amountPaid").toString().trim(),
+      paymentReference: data.get("paymentReference").toString().trim(),
+      paymentDate: data.get("paymentDate").toString().trim(),
+      subscriptionNotes: data.get("subscriptionNotes").toString().trim(),
+      ...proof,
+    };
+    const response = await apiRequest("/subscriptions", {
+      method: "POST",
+      body: JSON.stringify(subscription),
+    });
+    subscriptionForm.reset();
+    subscriptionStatus.textContent = response.message;
+    if (adminUnlocked) await refreshAdminState();
+  } catch (error) {
+    subscriptionStatus.textContent = error.message;
+  } finally {
+    setBusy(subscriptionForm, false);
+  }
+});
+
 adminAccessForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!isAdminView) return;
@@ -730,6 +861,10 @@ document.addEventListener("click", async (event) => {
   }
 
   if (action === "approve-jobseeker" || action === "reject-jobseeker" || action === "reopen-jobseeker") {
+    await runAdminAction(action, id);
+  }
+
+  if (action === "verify-subscription" || action === "reject-subscription" || action === "reopen-subscription") {
     await runAdminAction(action, id);
   }
 
