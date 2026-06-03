@@ -13,6 +13,7 @@ const defaultState = () => ({
   employerRequests: [],
   jobPlacements: [],
   contacts: [],
+  subscriptions: [],
   notifications: [],
 });
 
@@ -24,6 +25,7 @@ const publicState = (state) => ({
   employerRequests: state.employerRequests,
   jobPlacements: state.jobPlacements,
   contacts: state.contacts,
+  subscriptions: state.subscriptions,
 });
 
 const normalizeState = (state = {}) => {
@@ -336,7 +338,47 @@ const createContact = (payload) => {
   };
 };
 
+const createSubscription = (payload) => {
+  requireFields(payload, [
+    "subscriberName",
+    "subscriberEmail",
+    "subscriberPhone",
+    "subscriptionType",
+    "amountPaid",
+    "paymentReference",
+    "paymentDate",
+    "proofFileName",
+    "proofFileType",
+    "proofDataUrl",
+  ]);
+  return {
+    id: randomUUID(),
+    subscriberName: clean(payload.subscriberName),
+    subscriberEmail: clean(payload.subscriberEmail),
+    subscriberPhone: clean(payload.subscriberPhone),
+    subscriptionType: clean(payload.subscriptionType),
+    amountPaid: clean(payload.amountPaid),
+    paymentReference: clean(payload.paymentReference),
+    paymentDate: clean(payload.paymentDate),
+    proofFileName: clean(payload.proofFileName),
+    proofFileType: clean(payload.proofFileType),
+    proofFileSize: clean(payload.proofFileSize),
+    proofDataUrl: clean(payload.proofDataUrl),
+    subscriptionNotes: clean(payload.subscriptionNotes),
+    status: "pending",
+    receiptNumber: "",
+    verifiedAt: "",
+    createdAt: new Date().toISOString(),
+  };
+};
+
 const findById = (items, id) => items.find((item) => item.id === id);
+
+const createReceiptNumber = (state) => {
+  const year = new Date().getFullYear();
+  const nextNumber = state.subscriptions.filter((subscription) => clean(subscription.receiptNumber)).length + 1;
+  return `PES-REC-${year}-${String(nextNumber).padStart(4, "0")}`;
+};
 
 const applyAdminAction = async (state, payload) => {
   const { action, id, selectedId } = payload;
@@ -385,6 +427,77 @@ Category: ${jobseeker.jobCategory}
 Thank you for registering with the Philotimo talent portal.`,
     });
     return { message: `${jobseeker.jobName} is now ${jobseeker.status}.`, emails: [email] };
+  }
+
+  if (["verify-subscription", "reject-subscription", "reopen-subscription"].includes(action)) {
+    const subscription = findById(state.subscriptions, id);
+    if (!subscription) throw new Error("Subscription record not found.");
+
+    if (action === "verify-subscription") {
+      subscription.status = "verified";
+      subscription.verifiedAt = new Date().toISOString();
+      if (!clean(subscription.receiptNumber)) subscription.receiptNumber = createReceiptNumber(state);
+      const email = await addEmailNotification(state, {
+        to: subscription.subscriberEmail,
+        subject: "Philotimo subscription receipt",
+        relatedType: "subscription",
+        relatedId: subscription.id,
+        body: `Dear ${subscription.subscriberName},
+
+Philotimo Educational Consultancy Services has verified your subscription payment.
+
+Subscription: ${subscription.subscriptionType}
+Amount paid: NGN ${subscription.amountPaid}
+Payment reference: ${subscription.paymentReference}
+Receipt number: ${subscription.receiptNumber}
+Payment date: ${subscription.paymentDate}
+
+Please keep this receipt number for your records. Thank you for choosing Philotimo.`,
+      });
+      return {
+        message: `${subscription.subscriberName}'s payment has been verified and receipt ${subscription.receiptNumber} has been issued.`,
+        emails: [email],
+      };
+    }
+
+    if (action === "reject-subscription") {
+      subscription.status = "rejected";
+      subscription.verifiedAt = "";
+      const email = await addEmailNotification(state, {
+        to: subscription.subscriberEmail,
+        subject: "Philotimo subscription payment review",
+        relatedType: "subscription",
+        relatedId: subscription.id,
+        body: `Dear ${subscription.subscriberName},
+
+Philotimo Educational Consultancy Services has reviewed your subscription payment proof.
+
+Status: rejected
+Subscription: ${subscription.subscriptionType}
+Payment reference: ${subscription.paymentReference}
+
+Please contact the office with a clearer proof of payment or corrected payment details so the payment can be verified.`,
+      });
+      return { message: `${subscription.subscriberName}'s subscription proof has been rejected.`, emails: [email] };
+    }
+
+    subscription.status = "pending";
+    subscription.verifiedAt = "";
+    const email = await addEmailNotification(state, {
+      to: subscription.subscriberEmail,
+      subject: "Philotimo subscription review reopened",
+      relatedType: "subscription",
+      relatedId: subscription.id,
+      body: `Dear ${subscription.subscriberName},
+
+Philotimo Educational Consultancy Services has reopened your subscription payment record for another review.
+
+Subscription: ${subscription.subscriptionType}
+Payment reference: ${subscription.paymentReference}
+
+The office will update you once the review is completed.`,
+    });
+    return { message: `${subscription.subscriberName}'s subscription has been moved back to pending review.`, emails: [email] };
   }
 
   if (action === "allocate-student") {
@@ -587,6 +700,17 @@ export default async function handler(request) {
       const matchCount = getJobseekerMatches(state, employerRequest).length;
       await writeState(state);
       return json(201, { message: `${employerRequest.institutionName}'s request has been saved.`, record: employerRequest, matchCount });
+    }
+
+    if (route === "/subscriptions" && method === "POST") {
+      const state = await readState();
+      const subscription = createSubscription(await readJsonBody(request));
+      state.subscriptions.unshift(subscription);
+      await writeState(state);
+      return json(201, {
+        message: `${subscription.subscriberName}, your subscription and proof of payment have been submitted for admin verification.`,
+        record: subscription,
+      });
     }
 
     if (route === "/contacts" && method === "POST") {
